@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Návrh podélné výztuže železobetonového průřezu</title>
+
+    <!-- CSS Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏗️ Návrh podélné výztuže železobetonového průřezu</h1>
+            <p>Výpočet podle Eurokódu EC2/EC3 - Parabolicko-obdélníkový diagram</p>
+        </div>
+
+        <form id="designForm">
+            <!-- Hlavní taby -->
+            <div class="main-tabs">
+                <button type="button" class="main-tab-button active" data-main-tab="zadani">📋 Zadání</button>
+                <button type="button" class="main-tab-button" data-main-tab="analyza">📊 Analýza přetvoření a napětí průřezu</button>
+                <button type="button" class="main-tab-button" data-main-tab="navrh">🔧 Návrh výztuže</button>
+            </div>
+
+            <!-- TAB 1: Zadání -->
+            <div id="zadani" class="main-tab-content active">
+            <div class="content">
+                <!-- Levý panel - formulář s taby -->
+                <div class="left-panel">
+                    <!-- Tab navigace -->
+                    <div class="tabs">
+                        <button type="button" class="tab-button active" data-tab="geometry">📐 Geometrie</button>
+                        <button type="button" class="tab-button" data-tab="concrete">🧱 Beton</button>
+                        <button type="button" class="tab-button" data-tab="steel">🔩 Výztuž</button>
+                        <button type="button" class="tab-button" data-tab="layers">📍 Vrstvy</button>
+                    </div>
+
+                    <!-- Tab obsah -->
+                    <div id="geometry" class="tab-content active">
+                        <div class="section">
+                            <h2>📐 Geometrie průřezu</h2>
+
+                            <div class="info-box">
+                                ℹ️ Zadejte základní rozměry obdélníkového průřezu
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Šířka průřezu <span class="label-description">(b)</span>
+                                </label>
+                                <input type="number" id="b" step="0.001" min="0.1" max="5" value="0.3" required>
+                                <span class="unit">Jednotka: m (metry)</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Výška průřezu <span class="label-description">(h)</span>
+                                </label>
+                                <input type="number" id="h" step="0.001" min="0.1" max="5" value="0.5" required>
+                                <span class="unit">Jednotka: m (metry)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="concrete" class="tab-content">
+                        <div class="section">
+                            <h2>🧱 Vlastnosti betonu</h2>
+
+                            <div class="info-box">
+                                ℹ️ Materiálové charakteristiky betonu podle EC2
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Návrhová pevnost v tlaku <span class="label-description">(f<sub>cd</sub>)</span>
+                                </label>
+                                <input type="number" id="fcd" step="1000" min="-50000000" max="-1000000" value="-20000000" required>
+                                <span class="unit">Jednotka: Pa (Pascaly, záporné pro tlak) | Příklad: -20 MPa = -20000000 Pa</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Přetvoření na konci 2. větve <span class="label-description">(ε<sub>c2</sub>)</span>
+                                </label>
+                                <input type="number" id="epsC2" step="0.0001" min="-0.01" max="0" value="-0.002" required>
+                                <span class="unit">Jednotka: - (bezrozměrné) | Typicky -0.002 (-2‰)</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Mezní tlakové přetvoření <span class="label-description">(ε<sub>cu</sub>)</span>
+                                </label>
+                                <input type="number" id="epsCu" step="0.0001" min="-0.01" max="0" value="-0.0035" required>
+                                <span class="unit">Jednotka: - (bezrozměrné) | Typicky -0.0035 (-3.5‰)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="steel" class="tab-content">
+                        <div class="section">
+                            <h2>🔩 Vlastnosti výztuže</h2>
+
+                            <div class="info-box">
+                                ℹ️ Materiálové charakteristiky betonářské výztuže
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Návrhová mez kluzu <span class="label-description">(f<sub>yd</sub>)</span>
+                                </label>
+                                <input type="number" id="fyd" step="1000000" min="100000000" max="1000000000" value="435000000" required>
+                                <span class="unit">Jednotka: Pa (Pascaly) | Příklad: 435 MPa = 435000000 Pa</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Maximální napětí na šikmé větvi <span class="label-description">(k·f<sub>yd</sub>)</span>
+                                </label>
+                                <input type="number" id="k_fyd" step="1000000" min="100000000" max="1500000000" value="500000000" required>
+                                <span class="unit">Jednotka: Pa (Pascaly) | Typicky 1.05-1.15 × f<sub>yd</sub></span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Modul pružnosti <span class="label-description">(E<sub>s</sub>)</span>
+                                </label>
+                                <input type="number" id="Es" step="1000000000" min="100000000000" max="300000000000" value="200000000000" required>
+                                <span class="unit">Jednotka: Pa (Pascaly) | Typicky 200 GPa = 200000000000 Pa</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    Mezní přetvoření výztuže <span class="label-description">(ε<sub>ud</sub>)</span>
+                                </label>
+                                <input type="number" id="epsUd" step="0.001" min="0" max="0.1" value="0.01" required>
+                                <span class="unit">Jednotka: - (bezrozměrné) | Typicky 0.01 (10‰)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="layers" class="tab-content">
+                        <div class="section">
+                            <h2>📍 Poloha vrstev výztuže</h2>
+
+                            <div class="info-box">
+                                ℹ️ Souřadnice vrstev v globálním souřadném systému modelu
+                            </div>
+
+                            <div class="layer-inputs">
+                                <h3>Vrstva 1 - Horní výztuž</h3>
+
+                                <div class="form-group">
+                                    <label>
+                                        Vzdálenost od horní hrany <span class="label-description">(krytí + d<sub>s</sub>/2)</span>
+                                    </label>
+                                    <input type="number" id="layer1_yPos" step="0.001" value="0.05" required>
+                                    <span class="unit">Jednotka: m | Výchozí: 50 mm od horního okraje</span>
+                                </div>
+                            </div>
+
+                            <div class="layer-inputs">
+                                <h3>Vrstva 2 - Dolní výztuž</h3>
+
+                                <div class="form-group">
+                                    <label>
+                                        Vertikální souřadnice <span class="label-description">(y<sub>pos</sub>)</span>
+                                    </label>
+                                    <input type="number" id="layer2_yPos" step="0.001" value="0.05" required>
+                                    <span class="unit">Jednotka: m | Výchozí: 50 mm od dolního okraje (pro h=0.5m → ypos=0.05m)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tlačítka -->
+                    <div class="button-group">
+                        <button type="button" class="btn-calculate" onclick="calculateZadani()">🧮 Vypočítat</button>
+                        <button type="reset" class="btn-reset">🔄 Reset</button>
+                    </div>
+
+                    <!-- Výsledky -->
+                    <div id="results" class="results">
+                        <h2>📊 Výsledky zadání</h2>
+                        <div id="resultsContent"></div>
+                    </div>
+                </div>
+
+                <!-- Pravý panel - velká vizualizace -->
+                <div class="right-panel">
+                    <div class="visualization">
+                        <h2>📈 Vizualizace průřezu</h2>
+                        <div class="canvas-container">
+                            <canvas id="sectionCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            <!-- TAB 2: Analýza přetvoření a napětí -->
+            <div id="analyza" class="main-tab-content">
+            <!-- Sekce analýzy přetvoření a napětí -->
+            <div class="strain-analysis">
+                <div class="analysis-controls">
+                    <div class="point-selection">
+                        <!-- Levý sloupec - horní body -->
+                        <div class="point-column">
+                            <h4>Horní bod (vyberte 1)</h4>
+
+                            <div class="point-group" id="point-top">
+                                <label>
+                                    <input type="radio" name="top-point" class="point-radio" data-point="top" value="top">
+                                    🔴 Horní okraj průřezu
+                                    <input type="number" id="strain_top" step="0.1" value="-3.5" disabled title="Přetvoření εtop [‰]" placeholder="εtop [‰]">
+                                </label>
+                            </div>
+
+                            <div class="point-group" id="point-s1">
+                                <label>
+                                    <input type="radio" name="top-point" class="point-radio" data-point="s1" value="s1" checked>
+                                    🔴 Horní výztuž (A1)
+                                    <input type="number" id="strain_s1" step="0.1" value="-2.0" title="Přetvoření εs1 [‰]" placeholder="εs1 [‰]">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Pravý sloupec - dolní body -->
+                        <div class="point-column">
+                            <h4>Dolní bod (vyberte 1)</h4>
+
+                            <div class="point-group" id="point-s2">
+                                <label>
+                                    <input type="radio" name="bottom-point" class="point-radio" data-point="s2" value="s2" checked>
+                                    🔵 Dolní výztuž (A2)
+                                    <input type="number" id="strain_s2" step="0.1" value="2.0" title="Přetvoření εs2 [‰]" placeholder="εs2 [‰]">
+                                </label>
+                            </div>
+
+                            <div class="point-group" id="point-bottom">
+                                <label>
+                                    <input type="radio" name="bottom-point" class="point-radio" data-point="bottom" value="bottom">
+                                    🔵 Dolní okraj průřezu
+                                    <input type="number" id="strain_bottom" step="0.1" value="10.0" disabled title="Přetvoření εbottom [‰]" placeholder="εbottom [‰]">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn-calculate" onclick="calculateStrainAnalysis()">
+                            📐 Vypočítat přetvoření a napětí
+                        </button>
+                    </div>
+                </div>
+
+                <div class="analysis-canvas-container">
+                    <div class="canvas-wrapper">
+                        <h3>Diagram přetvoření</h3>
+                        <canvas id="strainCanvas" width="500" height="600"></canvas>
+                    </div>
+
+                    <div class="canvas-wrapper">
+                        <h3>Diagram napětí (parabolicko-obdélníkový)</h3>
+                        <canvas id="stressCanvas" width="500" height="600"></canvas>
+                    </div>
+                </div>
+
+                <div id="analysisResults" class="analysis-results" style="display: none;">
+                    <h3>Výsledky analýzy</h3>
+                    <div id="analysisResultsContent"></div>
+                </div>
+            </div>
+            </div>
+
+            <!-- TAB 3: Návrh výztuže -->
+            <div id="navrh" class="main-tab-content">
+                <div class="content">
+                    <!-- Levý panel - vstupní údaje -->
+                    <div class="left-panel">
+                        <div class="section">
+                            <h2>🔧 Návrh výztuže pro zadané zatížení</h2>
+
+                            <div class="info-box">
+                                ℹ️ Zadejte vnitřní síly působící na průřez. Aplikace navrhne potřebnou výztuž.
+                            </div>
+
+                            <!-- Zatížení -->
+                            <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px solid #e9ecef;">
+                                <h3 style="color: #495057; font-size: 16px; margin-bottom: 15px;">⚡ Zatížení průřezu</h3>
+
+                                <div class="form-group">
+                                    <label>Normálová síla N <span class="label-description">(kladná = tah, záporná = tlak)</span></label>
+                                    <input type="number" id="load_N" value="0" step="1" oninput="updateEquilibrium()">
+                                    <span class="unit">kN</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Moment M <span class="label-description">(kolem osy z)</span></label>
+                                    <input type="number" id="load_M" value="30" step="1" oninput="updateEquilibrium()">
+                                    <span class="unit">kNm</span>
+                                </div>
+                            </div>
+
+                            <!-- Rovnice rovnováhy -->
+                            <div style="background: #f0f3ff; padding: 20px; border-radius: 10px; border: 3px solid #667eea;">
+                                <h3 style="color: #667eea; font-size: 16px; margin-bottom: 15px; font-weight: bold;">📐 Rovnice rovnováhy</h3>
+
+                                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                                    <div style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 2.2;">
+                                        <div style="margin-bottom: 15px;">
+                                            <strong style="color: #495057;">Silová rovnováha:</strong><br>
+                                            <span style="color: #2c3e50; font-weight: 600;">Fc + Fs1 + Fs2 = N</span><br>
+                                            <span id="eq_force" style="color: #667eea; font-size: 13px;">Fc + As1·σ1 + As2·σ2 = N</span>
+                                        </div>
+                                        <div>
+                                            <strong style="color: #495057;">Momentová rovnováha:</strong><br>
+                                            <span style="color: #2c3e50; font-weight: 600;">Mc + Ms1 + Ms2 = M</span><br>
+                                            <span id="eq_moment" style="color: #667eea; font-size: 13px;">Fc·(-yc) + As1·σ1·(-y1) + As2·σ2·(-y2) = M</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="font-size: 12px; color: #6c757d; line-height: 1.6;">
+                                    <strong>Kde:</strong><br>
+                                    • Fc = normálová síla od betonu [N]<br>
+                                    • As1, As2 = plocha horní/dolní výztuže [m²]<br>
+                                    • σ1, σ2 = napětí v horní/dolní výztuži [Pa]<br>
+                                    • yc = vzdálenost těžiště tlačené oblasti k těžišti průřezu [m]<br>
+                                    • y1, y2 = vzdálenost výztuže k těžišti průřezu [m]<br>
+                                    • N = zadaná normálová síla [N]<br>
+                                    • M = zadaný moment [Nm]
+                                </div>
+                            </div>
+
+                            <!-- Tlačítko pro výpočet -->
+                            <div class="button-group" style="margin-top: 20px;">
+                                <button type="button" class="btn-calculate" onclick="calculateReinforcement()">
+                                    🧮 Navrhnout výztuž
+                                </button>
+                            </div>
+
+                            <!-- Výsledky návrhu -->
+                            <div id="designResults" class="results" style="display: none; margin-top: 20px;">
+                                <h2>📊 Výsledky návrhu</h2>
+                                <div id="designResultsContent"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pravý panel - vizualizace -->
+                    <div class="right-panel">
+                        <div class="visualization">
+                            <h2>📈 Vizualizace průřezu s výztuží</h2>
+                            <div class="canvas-container">
+                                <canvas id="designCombinedCanvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </form>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/calculations.js"></script>
+    <script src="js/ui.js"></script>
+</body>
+</html>
