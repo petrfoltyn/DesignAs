@@ -458,3 +458,368 @@ function updateEquilibrium() {
     document.getElementById('eq_moment').innerHTML =
         `Fc·yc + As1·σ1·y1 + As2·σ2·y2 = <span style="color: #667eea; font-weight: bold;">${M.toFixed(1)} kNm</span>`;
 }
+
+/**
+ * Calculate strain at position y given εtop and εbottom
+ * @param {number} epsTop - strain at top [‰]
+ * @param {number} epsBottom - strain at bottom [‰]
+ * @param {number} y_normalized - normalized position from bottom (0) to top (1)
+ * @returns {number} strain at position y [‰]
+ */
+function calculateStrainAtY(epsTop, epsBottom, y_normalized) {
+    return epsBottom + (epsTop - epsBottom) * y_normalized;
+}
+
+/**
+ * Calculate interaction diagram characteristic points (Bod 1-8)
+ * Based on detailed description in body_prechody_detail.md
+ * @returns {Array} Array of point objects with strains, forces, and reinforcement
+ */
+function calculateInteractionDiagram() {
+    console.log('=== CALCULATING INTERACTION DIAGRAM ===');
+
+    // Get geometry and material properties
+    const b = parseFloat(document.getElementById('b').value) || 0.3; // m
+    const h = parseFloat(document.getElementById('h').value) || 0.5; // m
+    const fcd = parseFloat(document.getElementById('fcd').value) || -20000000; // Pa
+    const fyd = parseFloat(document.getElementById('fyd').value) || 435000000; // Pa
+    const Es = parseFloat(document.getElementById('Es').value) || 200000000000; // Pa
+    const epsC2 = parseFloat(document.getElementById('epsC2').value) || -0.002; // [-]
+    const epsCu = parseFloat(document.getElementById('epsCu').value) || -0.0035; // [-]
+    const epsUd = parseFloat(document.getElementById('epsUd').value) || 0.01; // [-]
+
+    // Reinforcement layer positions
+    const layer1_distance = parseFloat(document.getElementById('layer1_yPos').value) || 0.05; // m
+    const y1_abs = h - layer1_distance; // absolute coordinate from bottom
+    const y2_abs = parseFloat(document.getElementById('layer2_yPos').value) || 0.05; // m
+
+    // Normalized positions (0 = bottom, 1 = top)
+    const y1_norm = y1_abs / h; // horní výztuž
+    const y2_norm = y2_abs / h; // dolní výztuž
+
+    console.log('Geometry: b =', b, 'm, h =', h, 'm');
+    console.log('Reinforcement positions: y1_norm =', y1_norm, ', y2_norm =', y2_norm);
+    console.log('Material: fcd =', fcd/1e6, 'MPa, fyd =', fyd/1e6, 'MPa');
+    console.log('Strains: εcu =', epsCu*1000, '‰, εc2 =', epsC2*1000, '‰, εud =', epsUd*1000, '‰');
+
+    // Yield strain
+    const epsYd = fyd / Es; // [-]
+    console.log('εyd =', epsYd*1000, '‰');
+
+    // Get design loads from interaction tab inputs
+    const N_design = parseFloat(document.getElementById('interaction_N').value) || 0; // kN
+    const M_design = parseFloat(document.getElementById('interaction_M').value) || 0; // kNm
+
+    console.log('Design loads: N =', N_design, 'kN, M =', M_design, 'kNm');
+
+    const points = [];
+
+    // Helper function to calculate point data
+    function calculatePoint(name, epsTop, epsBottom) {
+        // Convert to ‰ for display
+        const epsTop_pm = epsTop * 1000;
+        const epsBottom_pm = epsBottom * 1000;
+
+        // Calculate strains at reinforcement layers
+        const epsS1 = calculateStrainAtY(epsTop, epsBottom, y1_norm);
+        const epsS2 = calculateStrainAtY(epsTop, epsBottom, y2_norm);
+        const epsS1_pm = epsS1 * 1000;
+        const epsS2_pm = epsS2 * 1000;
+
+        // Calculate k and q for strain distribution
+        const h_2 = h / 2;
+        const y_top_local = h_2;
+        const y_bottom_local = -h_2;
+
+        const k = (epsTop - epsBottom) / (y_top_local - y_bottom_local);
+        const q = epsTop - k * y_top_local;
+
+        // Calculate concrete forces
+        const concreteForces = fastConcreteNM(b, h, k, q, fcd);
+        const Fc = concreteForces.N / 1000; // kN
+        const Mc = concreteForces.M / 1000; // kNm
+
+        // Calculate steel stresses (bilinear)
+        const sigma1_elastic = epsS1 * Es;
+        const sigma1 = Math.max(Math.min(sigma1_elastic, fyd), -fyd);
+        const sigma2_elastic = epsS2 * Es;
+        const sigma2 = Math.max(Math.min(sigma2_elastic, fyd), -fyd);
+
+        // Local coordinates for reinforcement
+        const y1_local = y1_abs - (h - h_2);
+        const y2_local = y2_abs - (h - h_2);
+
+        // Calculate As1 and As2 for the design loads N_design and M_design
+        // Using Cramer's rule to solve the system of equations
+        const N_Pa = N_design * 1000; // kN -> N
+        const M_Pa = M_design * 1000; // kNm -> Nm
+
+        // Right hand side (without unknowns)
+        const RHS_N = N_Pa - concreteForces.N;        // N
+        const RHS_M = -M_Pa - concreteForces.M;       // Nm
+
+        // System determinant: D = σ1·σ2·(y2 - y1)
+        const det = sigma1 * sigma2 * (y2_local - y1_local);
+
+        let As1, As2, Fs1, Fs2;
+
+        if (Math.abs(det) < 1e-6) {
+            // Singular system - cannot calculate reinforcement
+            As1 = NaN;
+            As2 = NaN;
+            Fs1 = NaN;
+            Fs2 = NaN;
+        } else {
+            // Cramer's rule
+            As1 = (RHS_N * y2_local - RHS_M) / (sigma1 * (y2_local - y1_local));
+            As2 = (RHS_M - y1_local * RHS_N) / (sigma2 * (y2_local - y1_local));
+
+            // Calculate forces in steel
+            Fs1 = As1 * sigma1 / 1000; // kN
+            Fs2 = As2 * sigma2 / 1000; // kN
+        }
+
+        // Total forces (for verification)
+        const N_total = Fc + (isNaN(Fs1) ? 0 : Fs1) + (isNaN(Fs2) ? 0 : Fs2); // kN
+        const M_total = -Mc + (isNaN(Fs1) ? 0 : Fs1 * (-y1_local)) + (isNaN(Fs2) ? 0 : Fs2 * (-y2_local)); // kNm
+
+        return {
+            name: name,
+            epsTop: epsTop_pm,
+            epsBottom: epsBottom_pm,
+            epsS1: epsS1_pm,
+            epsS2: epsS2_pm,
+            Fc: Fc,
+            Fs1: Fs1,
+            Fs2: Fs2,
+            As1: isNaN(As1) ? NaN : As1 * 10000, // convert m² to cm²
+            As2: isNaN(As2) ? NaN : As2 * 10000, // convert m² to cm²
+            N: N_total,
+            M: M_total
+        };
+    }
+
+    // Define characteristic points (εtop, εbottom)
+    const characteristicPoints = [];
+
+    // BOD 1: Dostředný tlak (εtop = εbottom = εcu)
+    characteristicPoints.push({ name: 'Bod 1', epsTop: epsCu, epsBottom: epsCu });
+
+    // BOD 2: TOP = εcu, BOTTOM = εc2
+    characteristicPoints.push({ name: 'Bod 2', epsTop: epsCu, epsBottom: epsC2 });
+
+    // BOD 2b: TOP = εcu, BOTTOM = 0
+    characteristicPoints.push({ name: 'Bod 2b', epsTop: epsCu, epsBottom: 0 });
+
+    // BOD 3: TOP = εcu, εs2 = εyd
+    const epsBottom_bod3 = (epsYd - epsCu * y2_norm) / (1 - y2_norm);
+    characteristicPoints.push({ name: 'Bod 3', epsTop: epsCu, epsBottom: epsBottom_bod3 });
+
+    // BOD 4: TOP = εcu, εs2 = εud
+    const epsBottom_bod4 = (epsUd - epsCu * y2_norm) / (1 - y2_norm);
+    characteristicPoints.push({ name: 'Bod 4', epsTop: epsCu, epsBottom: epsBottom_bod4 });
+
+    // BOD 5: TOP = εc2, εs2 = εud (fixed)
+    const epsBottom_bod5 = (epsUd - epsC2 * y2_norm) / (1 - y2_norm);
+    characteristicPoints.push({ name: 'Bod 5', epsTop: epsC2, epsBottom: epsBottom_bod5 });
+
+    // BOD 6: TOP = 0, εs2 = εud (fixed)
+    const epsBottom_bod6 = (epsUd - 0 * y2_norm) / (1 - y2_norm);
+    characteristicPoints.push({ name: 'Bod 6', epsTop: 0, epsBottom: epsBottom_bod6 });
+
+    // BOD 7: εs1 = εyd, εs2 = εud (fixed)
+    const epsTop_bod7 = (epsYd * y2_norm - epsUd * y1_norm) / (y2_norm - y1_norm);
+    const epsBottom_bod7 = (epsUd - epsTop_bod7 * (1 - y2_norm)) / y2_norm;
+    characteristicPoints.push({ name: 'Bod 7', epsTop: epsTop_bod7, epsBottom: epsBottom_bod7 });
+
+    // BOD 8: Čistý tah (εtop = εbottom = εud)
+    characteristicPoints.push({ name: 'Bod 8', epsTop: epsUd, epsBottom: epsUd });
+
+    console.log('Characteristic points:', characteristicPoints);
+
+    // Get density parameter
+    const density = parseInt(document.getElementById('interaction_density').value) || 10;
+    console.log('Density (subdivisions):', density);
+
+    // Generate densified points
+    for (let i = 0; i < characteristicPoints.length - 1; i++) {
+        const point1 = characteristicPoints[i];
+        const point2 = characteristicPoints[i + 1];
+
+        // Add first characteristic point
+        points.push(calculatePoint(point1.name, point1.epsTop, point1.epsBottom));
+
+        // Add intermediate points
+        for (let j = 1; j < density; j++) {
+            const t = j / density; // interpolation parameter [0, 1]
+            const epsTop_interp = point1.epsTop + t * (point2.epsTop - point1.epsTop);
+            const epsBottom_interp = point1.epsBottom + t * (point2.epsBottom - point1.epsBottom);
+
+            const name = `${point1.name}-${point2.name} (${j}/${density})`;
+            points.push(calculatePoint(name, epsTop_interp, epsBottom_interp));
+        }
+    }
+
+    // Add last characteristic point
+    const lastPoint = characteristicPoints[characteristicPoints.length - 1];
+    points.push(calculatePoint(lastPoint.name, lastPoint.epsTop, lastPoint.epsBottom));
+
+    console.log('Total densified points:', points.length);
+
+    // Display results in table
+    displayInteractionTable(points);
+
+    return points;
+}
+
+/**
+ * Display interaction diagram points in table
+ * @param {Array} points - Array of calculated points
+ */
+function displayInteractionTable(points) {
+    const tableContainer = document.getElementById('interactionTableContainer');
+    const tableBody = document.getElementById('interactionTableBody');
+
+    // Clear existing rows
+    tableBody.innerHTML = '';
+
+    // Add rows for each point
+    points.forEach(point => {
+        const row = document.createElement('tr');
+
+        // Helper to format numbers with color coding
+        const formatValue = (value, decimals = 2) => {
+            if (isNaN(value) || !isFinite(value)) {
+                return '<span style="color: #999;">N/A</span>';
+            }
+            const formatted = value.toFixed(decimals);
+            const className = value < 0 ? 'negative' : (value > 0 ? 'positive' : '');
+            return `<span class="${className}">${formatted}</span>`;
+        };
+
+        row.innerHTML = `
+            <td>${point.name}</td>
+            <td>${formatValue(point.epsTop, 2)}</td>
+            <td>${formatValue(point.epsBottom, 2)}</td>
+            <td>${formatValue(point.epsS1, 2)}</td>
+            <td>${formatValue(point.epsS2, 2)}</td>
+            <td>${formatValue(point.Fc, 2)}</td>
+            <td>${formatValue(point.Fs1, 2)}</td>
+            <td>${formatValue(point.Fs2, 2)}</td>
+            <td>${formatValue(point.As1, 2)}</td>
+            <td>${formatValue(point.As2, 2)}</td>
+            <td>${formatValue(point.N, 2)}</td>
+            <td>${formatValue(point.M, 2)}</td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+
+    // Show table
+    tableContainer.style.display = 'block';
+}
+
+/**
+ * Calculate reinforcement for given N and M in interaction diagram tab
+ * Uses strain analysis from "Analýza přetvoření a napětí" tab
+ */
+function calculateInteractionReinforcement() {
+    console.log('=== CALCULATING INTERACTION REINFORCEMENT ===');
+
+    // 1. Get strain data from analysis dialog
+    const kqData = calculateKQ();
+
+    if (!kqData) {
+        console.log('kqData is null, showing alert');
+        alert('Nejprve nastavte přetvoření v záložce "Analýza přetvoření a napětí průřezu"!');
+        return;
+    }
+    console.log('kqData is valid, continuing...');
+
+    // 2. Get loads from interaction tab
+    const N = parseFloat(document.getElementById('interaction_N').value) || 0; // kN
+    const M = parseFloat(document.getElementById('interaction_M').value) || 0; // kNm
+
+    // 3. Get geometry and materials
+    const b = parseFloat(document.getElementById('b').value) || 0.3; // m
+    const h = parseFloat(document.getElementById('h').value) || 0.5; // m
+    const fcd = parseFloat(document.getElementById('fcd').value) || -20000000; // Pa
+    const fyd = parseFloat(document.getElementById('fyd').value) || 435000000; // Pa
+    const Es = parseFloat(document.getElementById('Es').value) || 200000000000; // Pa
+    const layer1_distance = parseFloat(document.getElementById('layer1_yPos').value) || 0.05; // m
+    const y1 = h - layer1_distance; // absolute coordinate
+    const y2 = parseFloat(document.getElementById('layer2_yPos').value) || 0.05; // m
+
+    // 4. Calculate stresses in reinforcement from strain
+    const h_2 = h / 2;
+    const y1_local = y1 - (h - h_2); // convert to local system
+    const y2_local = y2 - (h - h_2);
+
+    const eps_s1 = kqData.k * y1_local + kqData.q;
+    const eps_s2 = kqData.k * y2_local + kqData.q;
+
+    // Bilinear steel diagram
+    const sigma1_elastic = eps_s1 * Es;
+    const sigma1 = Math.max(Math.min(sigma1_elastic, fyd), -fyd);
+
+    const sigma2_elastic = eps_s2 * Es;
+    const sigma2 = Math.max(Math.min(sigma2_elastic, fyd), -fyd);
+
+    // 5. Calculate internal forces from concrete
+    const concreteForces = fastConcreteNM(b, h, kqData.k, kqData.q, fcd);
+    const Fc = concreteForces.N; // N
+    const Mc = concreteForces.M; // Nm
+
+    // Calculate centroid of compression zone
+    const yc = (Math.abs(Fc) > 1e-6) ? Mc / Fc : 0; // m
+
+    // 6. SOLVE SYSTEM OF EQUATIONS FOR As1 and As2
+    // Force equilibrium:     As1·σ1 + As2·σ2 + Fc = N
+    // Moment equilibrium: As1·σ1·(-y1) + As2·σ2·(-y2) + Fc·(-yc) = M
+
+    const N_Pa = N * 1000; // kN -> N
+    const M_Pa = M * 1000; // kNm -> Nm
+
+    // Right hand side (without unknowns)
+    const RHS_N = N_Pa - Fc;        // N
+    const RHS_M = -M_Pa - Mc;       // Nm
+
+    // System determinant: D = σ1·σ2·(y2 - y1)
+    const det = sigma1 * sigma2 * (y2_local - y1_local);
+
+    let As1, As2;
+
+    if (Math.abs(det) < 1e-6) {
+        // Singular system - reinforcement has same stress and position
+        alert('Nelze vypočítat výztuž - singulární soustava rovnic!\n' +
+              'Zkuste změnit přetvoření nebo polohu výztuže.');
+        console.error('Singular system: det =', det);
+        return;
+    }
+
+    // Cramer's rule
+    As1 = (RHS_N * y2_local - RHS_M) / (sigma1 * (y2_local - y1_local));
+    As2 = (RHS_M - y1_local * RHS_N) / (sigma2 * (y2_local - y1_local));
+
+    // Forces in reinforcement
+    const Fs1 = As1 * sigma1; // N
+    const Fs2 = As2 * sigma2; // N
+
+    console.log('=== SOLUTION ===');
+    console.log('As1 =', As1, 'm² =', (As1*10000).toFixed(2), 'cm²');
+    console.log('As2 =', As2, 'm² =', (As2*10000).toFixed(2), 'cm²');
+    console.log('Fs1 =', Fs1/1000, 'kN');
+    console.log('Fs2 =', Fs2/1000, 'kN');
+
+    // 7. Display results
+    const resultsDiv = document.getElementById('interactionDesignResults');
+    const as1Result = document.getElementById('interactionAs1Result');
+    const as2Result = document.getElementById('interactionAs2Result');
+
+    as1Result.innerHTML = `• <strong style="color: #e74c3c;">As<sub>1</sub></strong> (horní) = <strong>${(As1*10000).toFixed(2)} cm²</strong> = ${(As1*1e6).toFixed(0)} mm² <span style="font-size: 12px; color: #666;">(Fs1 = ${(Fs1/1000).toFixed(2)} kN)</span>`;
+    as2Result.innerHTML = `• <strong style="color: #3498db;">As<sub>2</sub></strong> (dolní) = <strong>${(As2*10000).toFixed(2)} cm²</strong> = ${(As2*1e6).toFixed(0)} mm² <span style="font-size: 12px; color: #666;">(Fs2 = ${(Fs2/1000).toFixed(2)} kN)</span>`;
+
+    resultsDiv.style.display = 'block';
+
+    console.log('Results displayed successfully');
+}

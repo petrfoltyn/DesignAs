@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "SlashCommand(/init)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(start index.html)"
     ],
     "deny": [],
     "ask": []

@@ -561,3 +561,91 @@ canvas:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* Interakční diagram - tabulka */
+.interaction-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.interaction-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.interaction-table th {
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    font-size: 11px;
+}
+
+.interaction-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border: 1px solid #dee2e6;
+    font-size: 11px;
+}
+
+.interaction-table tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+.interaction-table tbody tr:hover {
+    background: #e7f3ff;
+    transition: background 0.2s ease;
+}
+
+.interaction-table tbody tr td:first-child {
+    font-weight: 600;
+    color: #667eea;
+    background: #f0f3ff;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+/* Zvýraznění negativních hodnot */
+.interaction-table .negative {
+    color: #dc3545;
+}
+
+/* Zvýraznění pozitivních hodnot */
+.interaction-table .positive {
+    color: #28a745;
+}
+
+#interactionTableContainer {
+    margin-top: 20px;
+    animation: fadeIn 0.5s ease;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Scrollbar styling for table container */
+#interactionTableContainer::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+#interactionTableContainer::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#interactionTableContainer::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 10px;
+}
+
+#interactionTableContainer::-webkit-scrollbar-thumb:hover {
+    background: #764ba2;
+}

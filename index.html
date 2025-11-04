@@ -21,6 +21,7 @@
                 <button type="button" class="main-tab-button active" data-main-tab="zadani">📋 Zadání</button>
                 <button type="button" class="main-tab-button" data-main-tab="analyza">📊 Analýza přetvoření a napětí průřezu</button>
                 <button type="button" class="main-tab-button" data-main-tab="navrh">🔧 Návrh výztuže</button>
+                <button type="button" class="main-tab-button" data-main-tab="interakcni">📈 Interakční diagram</button>
             </div>
 
             <!-- TAB 1: Zadání -->
@@ -355,6 +356,104 @@
                             <div class="canvas-container">
                                 <canvas id="designCombinedCanvas"></canvas>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Interakční diagram -->
+            <div id="interakcni" class="main-tab-content">
+                <div style="padding: 30px; flex: 1; overflow-y: auto;">
+                    <div class="section" style="max-width: 100%; max-height: none;">
+                        <h2>📈 Interakční diagram N-M</h2>
+
+                        <div class="info-box">
+                            ℹ️ Charakteristické body interakčního diagramu - kombinace normálové síly N a momentu M
+                        </div>
+
+                        <!-- Zadání vnitřních sil pro návrh -->
+                        <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px solid #667eea;">
+                            <h3 style="color: #667eea; font-size: 16px; margin-bottom: 15px;">⚡ Zadání vnitřních sil pro návrh výztuže</h3>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; align-items: end;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Normálová síla N <span class="label-description">(kladná = tah, záporná = tlak)</span></label>
+                                    <input type="number" id="interaction_N" value="0" step="1">
+                                    <span class="unit">kN</span>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Moment M <span class="label-description">(kolem osy z)</span></label>
+                                    <input type="number" id="interaction_M" value="30" step="1">
+                                    <span class="unit">kNm</span>
+                                </div>
+
+                                <div>
+                                    <button type="button" class="btn-calculate" onclick="calculateInteractionReinforcement()" style="width: 100%; padding: 12px;">
+                                        🔧 Navrhnout výztuž
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Výsledky návrhu -->
+                            <div id="interactionDesignResults" style="display: none; margin-top: 15px; padding: 15px; background: #d4edda; border-radius: 8px; border: 2px solid #27ae60;">
+                                <strong style="color: #27ae60;">✅ VYPOČTENÁ VÝZTUŽ:</strong><br>
+                                <div style="margin-top: 10px; font-size: 14px;">
+                                    <span id="interactionAs1Result"></span><br>
+                                    <span id="interactionAs2Result"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nastavení zahuštění a tlačítko pro výpočet diagramu -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: end; margin-bottom: 20px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Zahuštění bodů <span class="label-description">(počet dílů mezi charakteristickými body)</span></label>
+                                <input type="number" id="interaction_density" value="10" step="1" min="1" max="100">
+                                <span class="unit">Výchozí: 10 dílů mezi body</span>
+                            </div>
+
+                            <button type="button" class="btn-calculate" onclick="calculateInteractionDiagram()">
+                                🧮 Vygenerovat interakční diagram
+                            </button>
+                        </div>
+
+                        <!-- Tabulka s výsledky -->
+                        <div id="interactionTableContainer" style="display: none;">
+                            <div style="overflow-x: auto;">
+                                <table id="interactionTable" class="interaction-table">
+                                    <thead>
+                                        <tr>
+                                            <th rowspan="2">Bod</th>
+                                            <th colspan="4">Přetvoření [‰]</th>
+                                            <th colspan="3">Síly [kN]</th>
+                                            <th colspan="2">Návrhová výztuž [cm²]</th>
+                                            <th rowspan="2">N [kN]</th>
+                                            <th rowspan="2">M [kNm]</th>
+                                        </tr>
+                                        <tr>
+                                            <th>εtop</th>
+                                            <th>εbottom</th>
+                                            <th>εs1</th>
+                                            <th>εs2</th>
+                                            <th>Fc</th>
+                                            <th>Fs1</th>
+                                            <th>Fs2</th>
+                                            <th>As1</th>
+                                            <th>As2</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="interactionTableBody">
+                                        <!-- Data budou vložena JavaScriptem -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Výsledky chyb (pro debug) -->
+                        <div id="interactionResults" class="results" style="display: none; margin-top: 20px;">
+                            <h3>⚠️ Diagnostické informace</h3>
+                            <div id="interactionResultsContent"></div>
                         </div>
                     </div>
                 </div>
