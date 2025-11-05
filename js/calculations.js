@@ -583,6 +583,52 @@ function calculateInteractionDiagram() {
         const N_total = Fc + (isNaN(Fs1) ? 0 : Fs1) + (isNaN(Fs2) ? 0 : Fs2); // kN
         const M_total = -Mc + (isNaN(Fs1) ? 0 : Fs1 * (-y1_local)) + (isNaN(Fs2) ? 0 : Fs2 * (-y2_local)); // kNm
 
+        // Calculate As and Md assuming As1 = 0
+        // Force equilibrium: As1·σ1 + As2·σ2 + Fc = N
+        // With As1 = 0: As2·σ2 = N - Fc
+        // => As = As2 = (N - Fc) / σ2
+        let As_simple, Md_simple;
+
+        if (Math.abs(sigma2) > 1e-6) {
+            // Calculate As2 from force equilibrium with As1 = 0
+            As_simple = (N_Pa - concreteForces.N) / sigma2; // m²
+
+            // Calculate moment with As1 = 0 and As2 = As_simple
+            // Moment equilibrium: Fc·(-yc) + As2·σ2·(-y2) = Md
+            const Fs2_simple = As_simple * sigma2; // N
+            const Ms2_simple = Fs2_simple * (-y2_local); // Nm
+            Md_simple = -concreteForces.M / 1000 + Ms2_simple / 1000; // kNm
+        } else {
+            As_simple = NaN;
+            Md_simple = NaN;
+        }
+
+        // Calculate Astot and Mdtot assuming As1 = As2 = Astot/2
+        // Force equilibrium: As1·σ1 + As2·σ2 + Fc = N
+        // With As1 = As2 = Astot/2: (Astot/2)·σ1 + (Astot/2)·σ2 + Fc = N
+        // => Astot·(σ1 + σ2)/2 = N - Fc
+        // => Astot = 2·(N - Fc) / (σ1 + σ2)
+        let Astot, Mdtot;
+
+        const sigma_sum = sigma1 + sigma2;
+        if (Math.abs(sigma_sum) > 1e-6) {
+            // Calculate Astot from force equilibrium
+            Astot = 2 * (N_Pa - concreteForces.N) / sigma_sum; // m²
+
+            // Calculate moment with As1 = As2 = Astot/2
+            // Moment equilibrium: Fc·(-yc) + As1·σ1·(-y1) + As2·σ2·(-y2) = Mdtot
+            const As1_tot = Astot / 2; // m²
+            const As2_tot = Astot / 2; // m²
+            const Fs1_tot = As1_tot * sigma1; // N
+            const Fs2_tot = As2_tot * sigma2; // N
+            const Ms1_tot = Fs1_tot * (-y1_local); // Nm
+            const Ms2_tot = Fs2_tot * (-y2_local); // Nm
+            Mdtot = -concreteForces.M / 1000 + Ms1_tot / 1000 + Ms2_tot / 1000; // kNm
+        } else {
+            Astot = NaN;
+            Mdtot = NaN;
+        }
+
         return {
             name: name,
             epsTop: epsTop_pm,
@@ -595,7 +641,11 @@ function calculateInteractionDiagram() {
             As1: isNaN(As1) ? NaN : As1 * 10000, // convert m² to cm²
             As2: isNaN(As2) ? NaN : As2 * 10000, // convert m² to cm²
             N: N_total,
-            M: M_total
+            M: M_total,
+            As: isNaN(As_simple) ? NaN : As_simple * 10000, // convert m² to cm²
+            Md: Md_simple, // kNm
+            Astot: isNaN(Astot) ? NaN : Astot * 10000, // convert m² to cm²
+            Mdtot: Mdtot // kNm
         };
     }
 
@@ -710,6 +760,10 @@ function displayInteractionTable(points) {
             <td>${formatValue(point.As2, 2)}</td>
             <td>${formatValue(point.N, 2)}</td>
             <td>${formatValue(point.M, 2)}</td>
+            <td>${formatValue(point.As, 2)}</td>
+            <td>${formatValue(point.Md, 2)}</td>
+            <td>${formatValue(point.Astot, 2)}</td>
+            <td>${formatValue(point.Mdtot, 2)}</td>
         `;
 
         tableBody.appendChild(row);
