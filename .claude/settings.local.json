@@ -6,7 +6,19 @@
       "Bash(start index.html)",
       "Bash(dotnet new:*)",
       "Bash(dotnet build:*)",
-      "Bash(dotnet run)"
+      "Bash(dotnet run)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(curl:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(nul)",
+      "Bash(taskkill:*)",
+      "Bash(ping:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(findstr:*)",
+      "Bash(netstat:*)",
+      "Bash(ren ConcreteOnlyDiagram.cs ConcreteDiagram.cs)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

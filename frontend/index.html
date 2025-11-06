@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interakční diagram N-M</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1400px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .controls {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            height: fit-content;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #495057;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group .unit {
+            display: block;
+            margin-top: 5px;
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+
+        .btn-calculate {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-calculate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-calculate:active {
+            transform: translateY(0);
+        }
+
+        .btn-calculate:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .visualization {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .canvas-container {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-size: 1.2em;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error {
+            display: none;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .stats {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .stat-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Interakční diagram N-M</h1>
+        <p class="subtitle">Návrh podélné výztuže železobetonového průřezu podle EC2</p>
+
+        <div class="content">
+            <!-- Levý panel - ovládání -->
+            <div class="controls">
+                <div class="info-box">
+                    ℹ️ Aplikace vykreslí interakční diagram s hustotou 10 bodů mezi každým charakteristickým bodem.
+                </div>
+
+                <div class="form-group">
+                    <label>Typ diagramu</label>
+                    <select id="diagramType" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 1em;">
+                        <option value="with-reinforcement">S výztuží (As1 + As2)</option>
+                        <option value="concrete-only" selected>Pouze beton</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Šířka průřezu (b)</label>
+                    <input type="number" id="b" value="0.3" step="0.01">
+                    <span class="unit">m (metry)</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Výška průřezu (h)</label>
+                    <input type="number" id="h" value="0.5" step="0.01">
+                    <span class="unit">m (metry)</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Vzdálenost horní výztuže od horního okraje</label>
+                    <input type="number" id="layer1" value="0.05" step="0.01">
+                    <span class="unit">m (metry)</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Vzdálenost dolní výztuže od dolního okraje</label>
+                    <input type="number" id="layer2" value="0.05" step="0.01">
+                    <span class="unit">m (metry)</span>
+                </div>
+
+                <button class="btn-calculate" onclick="calculateDiagram()">
+                    🧮 Vygenerovat diagram
+                </button>
+
+                <!-- Sekce návrhu výztuže -->
+                <div style="margin-top: 30px; padding-top: 30px; border-top: 2px solid #e9ecef;">
+                    <h3 style="color: #667eea; margin-bottom: 20px;">Návrh výztuže</h3>
+
+                    <div class="form-group">
+                        <label>Normálová síla (N)</label>
+                        <input type="number" id="nDesign" value="0" step="10">
+                        <span class="unit">kN (+ tah, - tlak)</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Moment (M)</label>
+                        <input type="number" id="mDesign" value="30" step="1">
+                        <span class="unit">kNm</span>
+                    </div>
+
+                    <button class="btn-calculate" onclick="designReinforcement()" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        🔧 Návrh výztuže
+                    </button>
+                </div>
+
+                <div class="error" id="errorMessage"></div>
+            </div>
+
+            <!-- Pravý panel - vizualizace -->
+            <div class="visualization">
+                <h2>Interakční diagram</h2>
+
+                <div class="loading" id="loading">
+                    ⏳ Počítám diagram...
+                </div>
+
+                <div class="canvas-container">
+                    <canvas id="diagramCanvas" width="800" height="600"></canvas>
+                </div>
+
+                <!-- Výsledky návrhu výztuže -->
+                <div id="designResults" style="display: none; margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3); width: 100%;">
+                    <h3 style="color: white; margin-bottom: 15px;">✅ Výsledek návrhu výztuže</h3>
+
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                        <div style="font-size: 0.9em; color: #6c757d; margin-bottom: 5px;">Návrhová plocha výztuže</div>
+                        <div id="asResult" style="font-size: 2em; font-weight: 700; color: #f5576c;"></div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                        <div style="background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">εₜₒₚ [‰]</div>
+                            <div id="epsTop" style="font-size: 1.3em; font-weight: 600; color: #495057;"></div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">εᵦₒₜ [‰]</div>
+                            <div id="epsBot" style="font-size: 1.3em; font-weight: 600; color: #495057;"></div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">εₐₛ₂ [‰]</div>
+                            <div id="epsAs" style="font-size: 1.3em; font-weight: 600; color: #495057;"></div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">σₐₛ₂ [MPa]</div>
+                            <div id="sigAs" style="font-size: 1.3em; font-weight: 600; color: #495057;"></div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px; margin-top: 10px;">
+                        <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">Kontrola momentu</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 1.1em; color: #495057;">M<sub>vypočtený</sub> = <span id="mCalc" style="font-weight: 600;"></span> kNm</span>
+                            <span id="errorPercent" style="font-size: 0.9em; padding: 4px 8px; background: #d4edda; color: #155724; border-radius: 4px; font-weight: 600;"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="characteristicPointsTable" style="display: none; margin-top: 20px; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); width: 100%;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Charakteristické body</h3>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                            <thead>
+                                <tr style="background: #f8f9fa; border-bottom: 2px solid #667eea;">
+                                    <th style="padding: 8px; text-align: left;">Bod</th>
+                                    <th style="padding: 8px; text-align: right;">N [kN]</th>
+                                    <th style="padding: 8px; text-align: right;">M [kNm]</th>
+                                    <th style="padding: 8px; text-align: right;">k [1/m]</th>
+                                    <th style="padding: 8px; text-align: right;">q [-]</th>
+                                    <th style="padding: 8px; text-align: right;">εₜ [‰]</th>
+                                    <th style="padding: 8px; text-align: right;">σₜ [MPa]</th>
+                                    <th style="padding: 8px; text-align: right;">εᵦ [‰]</th>
+                                    <th style="padding: 8px; text-align: right;">σᵦ [MPa]</th>
+                                    <th style="padding: 8px; text-align: right;">As1 [cm²]</th>
+                                    <th style="padding: 8px; text-align: right;">ε₁ [‰]</th>
+                                    <th style="padding: 8px; text-align: right;">σ₁ [MPa]</th>
+                                    <th style="padding: 8px; text-align: right;">As2 [cm²]</th>
+                                    <th style="padding: 8px; text-align: right;">ε₂ [‰]</th>
+                                    <th style="padding: 8px; text-align: right;">σ₂ [MPa]</th>
+                                </tr>
+                            </thead>
+                            <tbody id="characteristicPointsBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="diagram.js"></script>
+</body>
+</html>

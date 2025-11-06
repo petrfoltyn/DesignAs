@@ -33,6 +33,107 @@ public class InteractionDiagram
     }
 
     /// <summary>
+    /// Nalezení přesného bodu interakčního diagramu pro zadané N_design a M_design
+    /// Používá metodu regula falsi (metoda sečen) pro iteraci
+    /// </summary>
+    /// <param name="nDesign">Návrhová normálová síla [kN]</param>
+    /// <param name="mDesign">Návrhový moment [kNm]</param>
+    /// <param name="toleranceRel">Relativní tolerance [%] (např. 0.01 = 1%)</param>
+    /// <param name="toleranceAbs">Absolutní tolerance [kN] (např. 0.1 kN = 100 N)</param>
+    /// <param name="maxIterations">Maximální počet iterací</param>
+    /// <returns>Nalezený bod s přesným řešením</returns>
+    public InteractionPoint FindDesignPoint(
+        double nDesign,
+        double mDesign,
+        double toleranceRel = 0.01,
+        double toleranceAbs = 0.1,
+        int maxIterations = 50)
+    {
+        // Nastavit návrhové zatížení
+        SetDesignLoads(nDesign, mDesign);
+
+        // Spočítat iniciální body interakčního diagramu
+        var points = Calculate();
+
+        // Najít dva sousední body, mezi kterými leží řešení
+        int idx1 = -1, idx2 = -1;
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            double mPoint1 = points[i].M;
+            double mPoint2 = points[i + 1].M;
+
+            // Kontrola, zda řešení leží mezi těmito body
+            if ((mPoint1 <= mDesign && mDesign <= mPoint2) || (mPoint2 <= mDesign && mDesign <= mPoint1))
+            {
+                idx1 = i;
+                idx2 = i + 1;
+                break;
+            }
+        }
+
+        if (idx1 == -1)
+        {
+            throw new InvalidOperationException(
+                $"Řešení pro M_design = {mDesign:F2} kNm nebylo nalezeno v rozsahu interakčního diagramu. " +
+                $"Rozsah momentů: [{points.Min(p => p.M):F2}, {points.Max(p => p.M):F2}] kNm");
+        }
+
+        // Začít iteraci regula falsi
+        var point1 = points[idx1];
+        var point2 = points[idx2];
+
+        double eps1Top = point1.EpsTop / 1000;      // ‰ -> jednotky
+        double eps1Bottom = point1.EpsBottom / 1000;
+        double m1 = point1.M;
+
+        double eps2Top = point2.EpsTop / 1000;
+        double eps2Bottom = point2.EpsBottom / 1000;
+        double m2 = point2.M;
+
+        InteractionPoint result = point1;
+
+        for (int iter = 0; iter < maxIterations; iter++)
+        {
+            // Regula falsi: lineární interpolace
+            double t = (mDesign - m1) / (m2 - m1);
+            double epsTopNew = eps1Top + t * (eps2Top - eps1Top);
+            double epsBottomNew = eps1Bottom + t * (eps2Bottom - eps1Bottom);
+
+            // Vypočítat nový bod
+            result = CalculatePoint($"Iteration {iter + 1}", epsTopNew, epsBottomNew);
+
+            // Kontrola konvergence
+            double errorAbs = Math.Abs(result.M - mDesign);
+            double errorRel = Math.Abs(mDesign) > 1e-6 ? errorAbs / Math.Abs(mDesign) : errorAbs;
+
+            if (errorAbs < toleranceAbs || errorRel < toleranceRel)
+            {
+                result.Name = $"Design point (converged after {iter + 1} iterations)";
+                return result;
+            }
+
+            // Aktualizace intervalů pro další iteraci
+            if ((m1 - mDesign) * (result.M - mDesign) < 0)
+            {
+                // Řešení leží mezi point1 a result
+                eps2Top = epsTopNew;
+                eps2Bottom = epsBottomNew;
+                m2 = result.M;
+            }
+            else
+            {
+                // Řešení leží mezi result a point2
+                eps1Top = epsTopNew;
+                eps1Bottom = epsBottomNew;
+                m1 = result.M;
+            }
+        }
+
+        result.Name = $"Design point (max iterations {maxIterations} reached)";
+        return result;
+    }
+
+    /// <summary>
     /// Výpočet charakteristických bodů interakčního diagramu
     /// </summary>
     /// <param name="densities">Pole s počtem dílů pro každý interval (mezi Bod1-Bod2, Bod2-Bod2b, atd.)</param>
@@ -167,72 +268,24 @@ public class InteractionDiagram
         double y1Local = _geometry.Y1 - (_geometry.H - h2);
         double y2Local = _geometry.Y2 - (_geometry.H - h2);
 
-        // === VARIANTA 1: Optimální As1 a As2 (pro návrhové zatížení) ===
+        // Návrhové zatížení
         double nPa = _nDesign * 1000;  // kN -> N
-        double mPa = _mDesign * 1000;  // kNm -> Nm
 
-        double rhsN = nPa - concreteForces.N;
-        double rhsM = -mPa - concreteForces.M;
+        // ═══════════════════════════════════════════════════════════════
+        // VÝPOČET VARIANTY 2: Pouze dolní výztuž (As1 = 0)
+        // ═══════════════════════════════════════════════════════════════
 
-        double det = sigma1 * sigma2 * (y2Local - y1Local);
+        var single = ReinforcementCalculator.CalculateSingleLayer(
+            nPa, concreteForces, sigma2, y2Local);
 
-        double as1, as2, fs1, fs2;
+        // Výsledky
+        double as2 = single.IsValid ? single.As : double.NaN;
+        double fs2 = single.IsValid ? single.Fs / 1000 : double.NaN; // N -> kN
+        double mdSimple = single.IsValid ? single.Md / 1000 : double.NaN; // Nm -> kNm
 
-        if (Math.Abs(det) < 1e-6)
-        {
-            as1 = as2 = fs1 = fs2 = double.NaN;
-        }
-        else
-        {
-            as1 = (rhsN * y2Local - rhsM) / (sigma1 * (y2Local - y1Local));
-            as2 = (rhsM - y1Local * rhsN) / (sigma2 * (y2Local - y1Local));
-            fs1 = as1 * sigma1 / 1000; // kN
-            fs2 = as2 * sigma2 / 1000; // kN
-        }
-
-        // Celkové síly
-        double nTotal = fc + (double.IsNaN(fs1) ? 0 : fs1) + (double.IsNaN(fs2) ? 0 : fs2);
-        double mTotal = -concreteForces.M / 1000 +
-                       (double.IsNaN(fs1) ? 0 : fs1 * (-y1Local)) +
-                       (double.IsNaN(fs2) ? 0 : fs2 * (-y2Local));
-
-        // === VARIANTA 2: Pouze dolní výztuž (As1 = 0) ===
-        double asSimple, mdSimple;
-
-        if (Math.Abs(sigma2) > 1e-6)
-        {
-            asSimple = (nPa - concreteForces.N) / sigma2; // m²
-            double fs2Simple = asSimple * sigma2; // N
-            double ms2Simple = fs2Simple * (-y2Local); // Nm
-            mdSimple = -concreteForces.M / 1000 + ms2Simple / 1000; // kNm
-        }
-        else
-        {
-            asSimple = double.NaN;
-            mdSimple = double.NaN;
-        }
-
-        // === VARIANTA 3: Rovnoměrné rozložení (As1 = As2 = Astot/2) ===
-        double astot, mdtot;
-        double sigmaSum = sigma1 + sigma2;
-
-        if (Math.Abs(sigmaSum) > 1e-6)
-        {
-            astot = 2 * (nPa - concreteForces.N) / sigmaSum; // m²
-
-            double as1Tot = astot / 2;
-            double as2Tot = astot / 2;
-            double fs1Tot = as1Tot * sigma1; // N
-            double fs2Tot = as2Tot * sigma2; // N
-            double ms1Tot = fs1Tot * (-y1Local); // Nm
-            double ms2Tot = fs2Tot * (-y2Local); // Nm
-            mdtot = -concreteForces.M / 1000 + ms1Tot / 1000 + ms2Tot / 1000; // kNm
-        }
-        else
-        {
-            astot = double.NaN;
-            mdtot = double.NaN;
-        }
+        // Celkové síly (N kontrola, M vypočtené)
+        double nTotal = fc + (double.IsNaN(fs2) ? 0 : fs2);
+        double mTotal = -concreteForces.M / 1000 + (double.IsNaN(fs2) ? 0 : fs2 * (-y2Local));
 
         return new InteractionPoint
         {
@@ -242,16 +295,12 @@ public class InteractionDiagram
             EpsS1 = epsS1Pm,
             EpsS2 = epsS2Pm,
             Fc = fc,
-            Fs1 = double.IsNaN(fs1) ? double.NaN : fs1,
+            Mc = -concreteForces.M / 1000, // Nm -> kNm
             Fs2 = double.IsNaN(fs2) ? double.NaN : fs2,
-            As1 = double.IsNaN(as1) ? double.NaN : as1 * 10000, // m² -> cm²
-            As2 = double.IsNaN(as2) ? double.NaN : as2 * 10000, // m² -> cm²
             N = nTotal,
             M = mTotal,
-            As = double.IsNaN(asSimple) ? double.NaN : asSimple * 10000, // m² -> cm²
-            Md = mdSimple,
-            Astot = double.IsNaN(astot) ? double.NaN : astot * 10000, // m² -> cm²
-            Mdtot = mdtot
+            As2 = double.IsNaN(as2) ? double.NaN : as2 * 10000, // m² -> cm²
+            Md = mdSimple
         };
     }
 }

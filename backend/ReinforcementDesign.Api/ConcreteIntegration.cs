@@ -1,17 +1,17 @@
 namespace ReinforcementDesign;
 
 /// <summary>
-/// Výsledek integrace betonových sil
+/// Výsledek integrace vnitřních sil (beton nebo ocel)
 /// </summary>
-public class ConcreteForces
+public class Forces
 {
     /// <summary>
-    /// Normálová síla od betonu [N]
+    /// Normálová síla [N]
     /// </summary>
     public double N { get; set; }
 
     /// <summary>
-    /// Moment od betonu [Nm]
+    /// Moment [Nm]
     /// </summary>
     public double M { get; set; }
 }
@@ -34,7 +34,7 @@ public static class ConcreteIntegration
     /// <param name="q">Přetvoření v těžišti [-]</param>
     /// <param name="fcd">Návrhová pevnost betonu v tlaku [Pa] (záporná)</param>
     /// <returns>Normálová síla a moment od betonu</returns>
-    public static ConcreteForces FastConcreteNM(double b, double h, double k, double q, double fcd)
+    public static Forces FastConcreteNM(double b, double h, double k, double q, double fcd)
     {
         double h2 = 0.5 * h;
         double x1 = -h2;  // BOTTOM
@@ -63,7 +63,7 @@ public static class ConcreteIntegration
             if (q >= 0)
             {
                 // Tah nebo nula
-                return new ConcreteForces { N = 0, M = 0 };
+                return new Forces { N = 0, M = 0 };
             }
             else if (q > EC2)
             {
@@ -79,7 +79,7 @@ public static class ConcreteIntegration
                 N = fcd * b * h;
                 M = 0;
             }
-            return new ConcreteForces { N = N, M = M };
+            return new Forces { N = N, M = M };
         }
 
         // SEGMENT 2: Parabolická tlaková sekce
@@ -148,7 +148,7 @@ public static class ConcreteIntegration
             M += mConst;
         }
 
-        return new ConcreteForces { N = N, M = M };
+        return new Forces { N = N, M = M };
     }
 
     private static bool IsNonZero(double val) => Math.Abs(val) >= TOLERANCE;
