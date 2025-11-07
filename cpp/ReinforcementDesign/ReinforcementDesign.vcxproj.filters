@@ -35,6 +35,9 @@
     <ClInclude Include="ReinforcementDesigner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="InteractionDiagram.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="QUICK_START.md">

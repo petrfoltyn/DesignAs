@@ -147,6 +147,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ConcreteIntegration.h" />
+    <ClInclude Include="InteractionDiagram.h" />
     <ClInclude Include="MaterialProperties.h" />
     <ClInclude Include="ReinforcementDesigner.h" />
     <ClInclude Include="SteelStress.h" />

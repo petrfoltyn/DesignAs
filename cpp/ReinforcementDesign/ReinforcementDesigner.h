@@ -1,10 +1,12 @@
 #pragma once
 #include "MaterialProperties.h"
-#include "ConcreteIntegration.h"
-#include "SteelStress.h"
+#include "InteractionDiagram.h"
+#include "ConcreteIntegrationFast.h"  // Use analytical integration
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include <vector>
+#include <algorithm>
 
 // Design result structure
 struct DesignResult {
@@ -18,201 +20,203 @@ struct DesignResult {
     double M_calc;       // [Nm] calculated moment
     double errorAbs;     // [Nm] absolute moment error
     double errorRel;     // [-] relative moment error
-    int iterations;      // number of iterations
+    int iterations;      // number of iterations (not used with diagram lookup)
 };
 
-// Design algorithm (Variant 2: As1=0, As2 variable)
+// Design algorithm using pre-generated interaction diagram
 class ReinforcementDesigner {
 private:
     SectionGeometry geom;
     ConcreteProperties concrete;
     SteelProperties steel;
-    DesignLoads loads;
+    std::vector<DiagramPoint> diagram;  // Pre-generated interaction diagram (As1=0, As2=0)
 
-    // Find epsBot that satisfies N equilibrium for given epsTop and As2
-    double FindEpsBot(double epsTop, double As2_given) {
-        double epsBot = epsTop; // initial guess
+    // Find two points on diagram that bracket the target moment
+    // Returns indices of points before and after target M at given N
+    std::pair<int, int> FindBracketingPoints(double N_target, double M_target) {
+        // First, find points with similar N values
+        // For pure bending (N=0), we need to find the range where M varies
 
-        for (int i = 0; i < 50; i++) {
-            // Concrete forces
-            ConcreteForces cf = ConcreteIntegration::CalculateForce(
-                epsTop, epsBot, geom.b, geom.h, concrete
-            );
+        int bestIdx = -1;
+        double minError = 1e100;
 
-            // Strain in As2
-            double y2_from_top = geom.h - geom.d2;
-            double epsS2 = epsTop + (epsBot - epsTop) * y2_from_top / geom.h;
-
-            // Stress in As2
-            double sigmaS2 = SteelStress::CalculateStress(epsS2, steel);
-
-            // Steel force
-            double Fs2 = As2_given * sigmaS2;
-
-            // Total axial force
-            double N_calc = cf.Fc + Fs2;
-
-            // Check convergence
-            double N_error = std::abs(N_calc - loads.N);
-            if (N_error < std::abs(loads.N) * 0.0001 + 1.0) {
-                return epsBot;
+        // Find point closest to target N
+        for (size_t i = 0; i < diagram.size(); i++) {
+            double N_diagram = diagram[i].N * 1000.0;  // kN to N
+            double error = std::abs(N_diagram - N_target);
+            if (error < minError) {
+                minError = error;
+                bestIdx = i;
             }
-
-            // Update epsBot - Newton-like step
-            double dN_deps = geom.b * geom.h * std::abs(concrete.fcd) +
-                           As2_given * steel.Es * y2_from_top / geom.h;
-            if (dN_deps > 1e-6) {
-                epsBot -= (N_calc - loads.N) / dN_deps * 0.5;
-            } else {
-                epsBot += (loads.N - N_calc) * 0.0001;
-            }
-
-            // Constrain epsBot
-            if (epsBot < 1.2 * concrete.epsCu) epsBot = 1.2 * concrete.epsCu;
-            if (epsBot > 1.2 * steel.epsUd) epsBot = 1.2 * steel.epsUd;
         }
 
-        return epsBot;
+        if (bestIdx < 0) return {-1, -1};
+
+        // Now search around this point for M bracketing
+        // Look for segment where M changes from below to above target (or vice versa)
+
+        for (int i = 0; i < (int)diagram.size() - 1; i++) {
+            double N1 = diagram[i].N * 1000.0;
+            double N2 = diagram[i + 1].N * 1000.0;
+            double M1 = diagram[i].M * 1000.0;
+            double M2 = diagram[i + 1].M * 1000.0;
+
+            // Check if both points have similar N (within tolerance)
+            double N_mid = (N1 + N2) / 2.0;
+            if (std::abs(N_mid - N_target) < std::abs(N_target) * 0.1 + 1000.0) {
+                // Check if M brackets target
+                if ((M1 <= M_target && M_target <= M2) || (M2 <= M_target && M_target <= M1)) {
+                    return {i, i + 1};
+                }
+            }
+        }
+
+        return {-1, -1};
     }
 
-    // Calculate As2, M, N for given epsTop
-    void CalculateForEpsTop(double epsTop, double& As2_out, double& M_out, double& N_out,
-                           double& epsBot_out, double& epsS2_out, double& sigmaS2_out) {
-        // Start with As2 = 0 and find corresponding epsBot
-        As2_out = 0.0;
-        epsBot_out = FindEpsBot(epsTop, As2_out);
+    // Linear interpolation between two diagram points to find required As2
+    DesignResult InterpolateDesign(const DiagramPoint& p1, const DiagramPoint& p2,
+                                   double N_target, double M_target) {
+        DesignResult result;
+        result.converged = false;
 
-        // Concrete forces
-        ConcreteForces cf = ConcreteIntegration::CalculateForce(
-            epsTop, epsBot_out, geom.b, geom.h, concrete
-        );
+        // Convert to consistent units (N, Nm)
+        double M1 = p1.M * 1000.0;
+        double M2 = p2.M * 1000.0;
 
-        // Strain in As2
-        double y2_from_top = geom.h - geom.d2;
-        epsS2_out = epsTop + (epsBot_out - epsTop) * y2_from_top / geom.h;
-
-        // Stress in As2
-        sigmaS2_out = SteelStress::CalculateStress(epsS2_out, steel);
-
-        // Calculate required As2 for equilibrium
-        if (std::abs(sigmaS2_out) > 1e-6) {
-            As2_out = (loads.N - cf.Fc) / sigmaS2_out;
+        // Interpolation parameter
+        double t = 0.5;
+        if (std::abs(M2 - M1) > 1e-6) {
+            t = (M_target - M1) / (M2 - M1);
         }
 
-        // Ensure non-negative area
-        if (As2_out < 0.0) As2_out = 0.0;
+        // Clamp t to [0, 1]
+        t = std::max(0.0, std::min(1.0, t));
 
-        // Recalculate with actual As2
-        epsBot_out = FindEpsBot(epsTop, As2_out);
+        // Interpolate all properties
+        result.epsTop = (p1.epsTop + t * (p2.epsTop - p1.epsTop)) / 1000.0;  // per mille to absolute
+        result.epsBot = (p1.epsBot + t * (p2.epsBot - p1.epsBot)) / 1000.0;
+        result.epsS2 = (p1.epsS2 + t * (p2.epsS2 - p1.epsS2)) / 1000.0;
+        result.sigmaS2 = (p1.sigS2 + t * (p2.sigS2 - p1.sigS2)) * 1e6;  // MPa to Pa
 
-        // Final forces with correct epsBot
-        cf = ConcreteIntegration::CalculateForce(
-            epsTop, epsBot_out, geom.b, geom.h, concrete
+        // Calculate required As2 from equilibrium
+        // At this strain state, we have concrete forces - USE FAST ANALYTICAL METHOD
+        ConcreteForces cf = ConcreteIntegrationFast::CalculateForce(
+            result.epsTop, result.epsBot, geom.b, geom.h, concrete
         );
 
-        epsS2_out = epsTop + (epsBot_out - epsTop) * y2_from_top / geom.h;
-        sigmaS2_out = SteelStress::CalculateStress(epsS2_out, steel);
+        // Required As2 for equilibrium: N = Fc + As2 * sigmaS2
+        if (std::abs(result.sigmaS2) > 1e-6) {
+            result.As2 = (N_target - cf.Fc) / result.sigmaS2;
+        } else {
+            result.As2 = 0.0;
+        }
 
-        double Fs2 = As2_out * sigmaS2_out;
+        // Ensure non-negative
+        if (result.As2 < 0.0) result.As2 = 0.0;
 
-        // Moment about centroid
-        // y2_center is distance from centroid (negative for bottom reinforcement)
-        // Sign convention: positive moment causes tension at bottom
+        // Calculate actual N and M with this As2
+        double Fs2 = result.As2 * result.sigmaS2;
+        result.N_calc = cf.Fc + Fs2;
+
         double y2_center = geom.d2 - geom.h / 2.0;
-        M_out = cf.Mc + Fs2 * (-y2_center);  // Note the negative sign
-        N_out = cf.Fc + Fs2;
+        result.M_calc = cf.Mc + Fs2 * (-y2_center);
+
+        // Calculate errors
+        result.errorAbs = std::abs(result.M_calc - M_target);
+        result.errorRel = (std::abs(M_target) > 1e-6) ? result.errorAbs / std::abs(M_target) : 0.0;
+
+        result.converged = true;
+        result.iterations = 0;  // Direct lookup, no iterations
+
+        return result;
     }
 
 public:
+    // Constructor: generates interaction diagram once
     ReinforcementDesigner(const SectionGeometry& g, const ConcreteProperties& c,
-                         const SteelProperties& s, const DesignLoads& l)
-        : geom(g), concrete(c), steel(s), loads(l) {}
+                         const SteelProperties& s, int diagramDensity = 10)
+        : geom(g), concrete(c), steel(s) {
 
-    DesignResult Design() {
-        DesignResult result = { false, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0 };
+        std::cout << "Generating interaction diagram (As1=0, As2=0)...\n";
 
-        // Regula falsi - iteration to find correct epsTop
-        double epsTop_min = concrete.epsCu;  // start from ultimate compression
-        double epsTop_max = steel.epsUd;     // end at ultimate tension
+        // Generate diagram with As1=0, As2=0 (concrete only, for finding strain states)
+        InteractionDiagram diagramGen(geom, concrete, steel, 0.0, 0.0);
+        diagram = diagramGen.Generate(diagramDensity);
 
-        const int maxIter = 50;
-        const double tolRel = 0.01;  // 1%
-        const double tolAbs = 100.0; // 100 Nm = 0.1 kNm
+        std::cout << "Diagram generated with " << diagram.size() << " points.\n";
 
-        // Calculate M for boundaries
-        double As2_min, M_min, N_min, epsBot_min, epsS2_min, sigmaS2_min;
-        CalculateForEpsTop(epsTop_min, As2_min, M_min, N_min, epsBot_min, epsS2_min, sigmaS2_min);
+        // Print diagram bounds for debugging
+        double M_min = 1e100, M_max = -1e100;
+        double N_min = 1e100, N_max = -1e100;
+        for (const auto& pt : diagram) {
+            M_min = std::min(M_min, pt.M);
+            M_max = std::max(M_max, pt.M);
+            N_min = std::min(N_min, pt.N);
+            N_max = std::max(N_max, pt.N);
+        }
+        std::cout << "Diagram bounds: N=[" << N_min << ", " << N_max << "] kN, "
+                  << "M=[" << M_min << ", " << M_max << "] kNm\n";
+    }
 
-        double As2_max, M_max, N_max, epsBot_max, epsS2_max, sigmaS2_max;
-        CalculateForEpsTop(epsTop_max, As2_max, M_max, N_max, epsBot_max, epsS2_max, sigmaS2_max);
+    // Design for specific load case
+    DesignResult Design(const DesignLoads& loads, bool verbose = true) {
+        if (verbose) {
+            std::cout << "\n==========================================================\n";
+            std::cout << "Designing for: N = " << loads.N / 1000.0 << " kN, M = " << loads.M / 1000.0 << " kNm\n";
+            std::cout << "==========================================================\n";
+        }
 
-        std::cout << std::fixed << std::setprecision(4);
-        std::cout << "\nRegula Falsi Iteration:\n";
-        std::cout << "Target moment M = " << loads.M / 1000.0 << " kNm\n";
-        std::cout << "Initial bounds: M_min = " << M_min / 1000.0 << " kNm, M_max = " << M_max / 1000.0 << " kNm\n\n";
+        // Find bracketing points on diagram
+        auto [idx1, idx2] = FindBracketingPoints(loads.N, loads.M);
 
-        // Check if target moment is within bounds
-        if ((loads.M < M_min && loads.M < M_max) || (loads.M > M_min && loads.M > M_max)) {
-            std::cout << "ERROR: Target moment is outside the feasible range!\n";
-            std::cout << "Feasible range: [" << std::min(M_min, M_max) / 1000.0
-                     << ", " << std::max(M_min, M_max) / 1000.0 << "] kNm\n";
+        if (idx1 < 0 || idx2 < 0) {
+            if (verbose) {
+                std::cout << "ERROR: Could not find bracketing points on diagram!\n";
+                std::cout << "Target load may be outside the feasible range.\n";
+            }
+
+            DesignResult result;
+            result.converged = false;
             return result;
         }
 
-        // Regula falsi iteration
-        for (int iter = 0; iter < maxIter; iter++) {
-            // Interpolation - regula falsi
-            double epsTop_new;
-            if (std::abs(M_max - M_min) < 1e-6) {
-                epsTop_new = (epsTop_min + epsTop_max) / 2.0;
-            }
-            else {
-                epsTop_new = epsTop_min + (epsTop_max - epsTop_min) *
-                            (loads.M - M_min) / (M_max - M_min);
-            }
-
-            // Calculate for new epsTop
-            double As2_new, M_new, N_new, epsBot_new, epsS2_new, sigmaS2_new;
-            CalculateForEpsTop(epsTop_new, As2_new, M_new, N_new, epsBot_new, epsS2_new, sigmaS2_new);
-
-            // Error
-            double error_abs = std::abs(M_new - loads.M);
-            double error_rel = (std::abs(loads.M) > 1e-6) ? error_abs / std::abs(loads.M) : 0.0;
-
-            std::cout << "Iter " << std::setw(2) << iter + 1 << ": "
-                     << "epsTop = " << std::setw(8) << epsTop_new * 1000.0 << " o/oo, "
-                     << "M = " << std::setw(10) << M_new / 1000.0 << " kNm, "
-                     << "As2 = " << std::setw(8) << As2_new * 10000.0 << " cm^2, "
-                     << "error = " << std::setw(8) << error_rel * 100.0 << "%\n";
-
-            // Check convergence
-            if (error_abs < tolAbs || error_rel < tolRel) {
-                result.converged = true;
-                result.As2 = As2_new;
-                result.epsTop = epsTop_new;
-                result.epsBot = epsBot_new;
-                result.epsS2 = epsS2_new;
-                result.sigmaS2 = sigmaS2_new;
-                result.N_calc = N_new;
-                result.M_calc = M_new;
-                result.errorAbs = error_abs;
-                result.errorRel = error_rel;
-                result.iterations = iter + 1;
-                return result;
-            }
-
-            // Update bounds
-            if ((M_new < loads.M && M_min < loads.M) || (M_new > loads.M && M_min > loads.M)) {
-                epsTop_min = epsTop_new;
-                M_min = M_new;
-            }
-            else {
-                epsTop_max = epsTop_new;
-                M_max = M_new;
-            }
+        if (verbose) {
+            std::cout << "Found bracketing points:\n";
+            std::cout << "  Point " << idx1 << ": N=" << diagram[idx1].N << " kN, M=" << diagram[idx1].M << " kNm\n";
+            std::cout << "  Point " << idx2 << ": N=" << diagram[idx2].N << " kN, M=" << diagram[idx2].M << " kNm\n";
         }
 
-        std::cout << "\nDID NOT CONVERGE after " << maxIter << " iterations!\n";
+        // Interpolate to find design
+        DesignResult result = InterpolateDesign(diagram[idx1], diagram[idx2], loads.N, loads.M);
+
+        if (verbose && result.converged) {
+            std::cout << "\n[OK] Design found by interpolation\n";
+            std::cout << "Required As2 = " << result.As2 * 10000.0 << " cm^2\n";
+            std::cout << "Error: " << result.errorRel * 100.0 << " %\n";
+        }
+
         return result;
+    }
+
+    // Get the generated diagram (for export, visualization, etc.)
+    const std::vector<DiagramPoint>& GetDiagram() const {
+        return diagram;
+    }
+
+    // Design for multiple load cases efficiently
+    std::vector<DesignResult> DesignMultiple(const std::vector<DesignLoads>& loadCases) {
+        std::vector<DesignResult> results;
+
+        std::cout << "\n==========================================================\n";
+        std::cout << "Designing for " << loadCases.size() << " load cases\n";
+        std::cout << "==========================================================\n";
+
+        for (size_t i = 0; i < loadCases.size(); i++) {
+            std::cout << "\nLoad case " << (i + 1) << "/" << loadCases.size() << ":\n";
+            results.push_back(Design(loadCases[i]));
+        }
+
+        return results;
     }
 };

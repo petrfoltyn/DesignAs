@@ -129,6 +129,11 @@ TestResults/
 # Output files (but keep test_input.txt)
 !test_input.txt
 
+# CSV output files from diagram generation
+*.csv
+interaction_diagram_*.csv
+performance_results.csv
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
