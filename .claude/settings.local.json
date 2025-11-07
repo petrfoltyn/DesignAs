@@ -18,7 +18,10 @@
       "Bash(findstr:*)",
       "Bash(netstat:*)",
       "Bash(ren ConcreteOnlyDiagram.cs ConcreteDiagram.cs)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(xargs cat:*)",
+      "Bash(g++:*)",
+      "Bash(where:*)"
     ],
     "deny": [],
     "ask": []
